@@ -147,27 +147,21 @@ const signup = async (req, res, next) => {
 // Vérification OTP
 const verifyOtp = async (req, res) => {
   try {
-    const { userId, otpCode } = req.body;
+    const { email, otpCode } = req.body; // Maintenant on accepte email et otpCode
 
-    const foundUser = await user.findByPk(userId);
+    // Trouver l'utilisateur avec cet email et ce code OTP actif
+    const foundUser = await user.findOne({ 
+      where: { 
+        email: email,
+        otpCode: otpCode,
+        otpExpires: { [Op.gt]: new Date() } // Vérifie que le code n'a pas expiré
+      }
+    });
+
     if (!foundUser) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'Utilisateur introuvable',
-      });
-    }
-
-    if (foundUser.otpCode !== otpCode) {
       return res.status(400).json({
         status: 'fail',
-        message: 'Code OTP incorrect',
-      });
-    }
-
-    if (new Date() > new Date(foundUser.otpExpires)) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Code OTP expiré',
+        message: 'Code OTP invalide ou expiré',
       });
     }
 
@@ -175,7 +169,7 @@ const verifyOtp = async (req, res) => {
     await foundUser.update({ 
       isEmailVerified: true,
       otpCode: null,
-      otpExpires: null 
+      otpExpires: null
     });
 
     const token = generateToken({ id: foundUser.id });
@@ -184,17 +178,21 @@ const verifyOtp = async (req, res) => {
       status: 'success',
       message: 'Email vérifié avec succès',
       token,
+      user: {
+        id: foundUser.id,
+        email: foundUser.email,
+        isEmailVerified: true
+      }
     });
 
   } catch (error) {
-    console.error(error);
+    console.error('Erreur lors de la vérification OTP:', error);
     return res.status(500).json({
       status: 'error',
       message: 'Une erreur est survenue lors de la vérification',
     });
   }
 };
-
 // Connexion
 const login = async (req, res, next) => {
   try {
@@ -302,16 +300,18 @@ const forgotPassword = async (req, res) => {
 // Vérification OTP pour réinitialisation
 const verifyPasswordResetOtp = async (req, res) => {
   try {
-    const { userId, otpCode } = req.body;
+    const { email, otpCode } = req.body;
 
-    const foundUser = await user.findByPk(userId);
+    // Trouver l'utilisateur par email
+    const foundUser = await user.findOne({ where: { email } });
     if (!foundUser) {
       return res.status(404).json({
         status: 'fail',
-        message: 'Utilisateur non trouvé'
+        message: 'Aucun utilisateur trouvé avec cet email'
       });
     }
 
+    // Vérifier si le code OTP correspond
     if (foundUser.passwordResetToken !== otpCode) {
       return res.status(400).json({
         status: 'fail',
@@ -319,6 +319,7 @@ const verifyPasswordResetOtp = async (req, res) => {
       });
     }
 
+    // Vérifier si le code OTP n'a pas expiré
     if (new Date() > new Date(foundUser.passwordResetExpires)) {
       return res.status(400).json({
         status: 'fail',
@@ -326,6 +327,7 @@ const verifyPasswordResetOtp = async (req, res) => {
       });
     }
 
+    // Générer un token de réinitialisation
     const resetToken = jwt.sign(
       { id: foundUser.id },
       process.env.JWT_SECRET_KEY,
@@ -335,7 +337,8 @@ const verifyPasswordResetOtp = async (req, res) => {
     return res.status(200).json({
       status: 'success',
       message: 'Code OTP validé',
-      resetToken
+      resetToken,
+      userId: foundUser.id // On garde quand même l'userId dans la réponse pour la suite
     });
 
   } catch (error) {
@@ -350,9 +353,18 @@ const verifyPasswordResetOtp = async (req, res) => {
 // Réinitialisation mot de passe
 const resetPassword = async (req, res) => {
   try {
-    const { resetToken, newPassword, confirmNewPassword } = req.body;
+    const { resetToken, newPassword, confirmPassword } = req.body;
 
-    if (newPassword !== confirmNewPassword) {
+    // Vérifiez d'abord le token
+    if (!resetToken) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Token manquant'
+      });
+    }
+
+    // Puis vérifiez les mots de passe
+    if (newPassword !== confirmPassword) {
       return res.status(400).json({
         status: 'fail',
         message: 'Les mots de passe ne correspondent pas'

@@ -32,6 +32,6 @@ app.use(cors({
 
 
 const PORT = process.env.APP_Route ||5000;
-app.listen(PORT,() => {
+app.listen(PORT,'0.0.0.0',() => {
     console.log(`Serveur démarré et run`,PORT);
   });

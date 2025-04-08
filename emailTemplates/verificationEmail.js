@@ -30,6 +30,6 @@ module.exports = (otpCode) => ({
         Si vous n'êtes pas à l'origine de cette demande, veuillez ignorer cet email.
       </p>
       
-      <p>Cordialement,<br>L'équipe de [Votre Plateforme]</p>
+      <p>Cordialement,<br>L'équipe de  Plateforme</p>
     </div>`
   });

@@ -36,6 +36,20 @@ module.exports = sequelize.define('user', {
     type: DataTypes.STRING,
     allowNull:false,
   },
+  businessAddress: {  // New field for merchants
+    type: DataTypes.STRING,
+    allowNull: true,  // Only merchants will fill this field
+  },
+ 
+  businessName: {  // New field for merchants
+    type: DataTypes.STRING,
+    allowNull: true,  // Only merchants will fill this field
+  },
+ 
+  sectorOfActivity: {  // New field for merchants
+    type: DataTypes.STRING,
+    allowNull: true,  // Only merchants will fill this field
+  },
   password: {
     type: DataTypes.STRING,
     allowNull:false,
@@ -48,18 +62,6 @@ module.exports = sequelize.define('user', {
       }
       // Le hachage est déjà géré par le hook beforeCreate
     }
-  },
-  businessName: {  // New field for merchants
-    type: DataTypes.STRING,
-    allowNull: true,  // Only merchants will fill this field
-  },
-  businessAddress: {  // New field for merchants
-    type: DataTypes.STRING,
-    allowNull: true,  // Only merchants will fill this field
-  },
-  sectorOfActivity: {  // New field for merchants
-    type: DataTypes.STRING,
-    allowNull: true,  // Only merchants will fill this field
   },
   otpCode: {
     type: DataTypes.STRING,
