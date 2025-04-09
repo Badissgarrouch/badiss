@@ -98,8 +98,10 @@ const signup = async (req, res, next) => {
       lastName: body.lastName,
       email: body.email,
       phone:body.phone,
+      carteCin:body.carteCin,
       password: hashedPassword,
       confirmPassword:hashedPassword,
+
      
       
       businessName: body.businessName,

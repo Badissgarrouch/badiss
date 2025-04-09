@@ -32,6 +32,11 @@ module.exports = {
           type:Sequelize.STRING,
           allowNull:false,
         },
+        carteCin: {  
+          type: Sequelize.STRING,
+          allowNull: false,
+          
+        },
       businessName: {  // New field for merchants
         type: Sequelize.STRING,
         allowNull: true,  // Only merchants will fill this field
@@ -45,6 +50,7 @@ module.exports = {
         allowNull: true,
         // Only merchants will fill this field
       },
+      
       otpCode: {
         type: Sequelize.STRING,
         allowNull: true,

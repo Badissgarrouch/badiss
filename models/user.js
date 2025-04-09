@@ -36,6 +36,10 @@ module.exports = sequelize.define('user', {
     type: DataTypes.STRING,
     allowNull:false,
   },
+  carteCin: {  // New field for merchants
+    type: DataTypes.STRING,
+    allowNull: false,  // Only merchants will fill this field
+  },
   businessAddress: {  // New field for merchants
     type: DataTypes.STRING,
     allowNull: true,  // Only merchants will fill this field
@@ -50,6 +54,7 @@ module.exports = sequelize.define('user', {
     type: DataTypes.STRING,
     allowNull: true,  // Only merchants will fill this field
   },
+  
   password: {
     type: DataTypes.STRING,
     allowNull:false,
