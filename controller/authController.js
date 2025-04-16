@@ -51,6 +51,13 @@ const signup = async (req, res, next) => {
   try {
     const body = req.body;
 
+    if (body.password !== body.confirmPassword) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Les mots de passe ne correspondent pas'
+      });
+    }
+
     // Validation du type d'utilisateur
     if (!['1', '2'].includes(body.userType)) {
       return res.status(400).json({
