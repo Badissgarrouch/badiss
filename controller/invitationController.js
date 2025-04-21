@@ -7,7 +7,7 @@ const { Op } = require('sequelize');
 // Recherche d'utilisateurs
 exports.searchUsers = async (req, res) => {
   try {
-    const { searchTerm, userType } = req.query; // Garder en GET avec query params
+    const { searchTerm, userType } = req.query;
     const currentUser = req.user;
 
     if (!searchTerm || searchTerm.trim().length < 2) {
@@ -17,13 +17,13 @@ exports.searchUsers = async (req, res) => {
       });
     }
 
-    // Construction de la requête (identique à votre version actuelle)
     const where = {
       id: { [Op.ne]: currentUser.id },
       [Op.or]: [
         { firstName: { [Op.iLike]: `%${searchTerm}%` } },
         { lastName: { [Op.iLike]: `%${searchTerm}%` } },
-        { businessName: { [Op.iLike]: `%${searchTerm}%` } }
+        { businessName: { [Op.iLike]: `%${searchTerm}%` } },
+        { email: { [Op.iLike]: `%${searchTerm}%` } } // Ajout de la recherche par email
       ]
     };
 
@@ -31,7 +31,17 @@ exports.searchUsers = async (req, res) => {
 
     const users = await user.findAll({
       where,
-      attributes: ['id', 'firstName', 'lastName', 'email', 'userType', 'businessName'],
+      attributes: [
+        'id', 
+        'firstName', 
+        'lastName', 
+        'email',
+        'phone',       // Ajouté    
+        'userType', 
+        'businessName',
+        'businessAddress',
+        'sectorOfActivity', // Ajouté
+      ],
       limit: 20
     });
 
@@ -52,7 +62,6 @@ exports.searchUsers = async (req, res) => {
 
 
 // Envoyer une invitation
-// invitationController.js
 exports.sendInvitation = async (req, res) => {
   try {
     const { receiverId, message } = req.body;
@@ -127,8 +136,42 @@ exports.sendInvitation = async (req, res) => {
 };
 
 
-// Répondre à une invitation
-// Répondre à une invitation
+exports.checkInvitation = async (req, res) => {
+  try {
+    const { receiverId } = req.body;
+    const senderId = req.user.id;
+
+    if (!receiverId) {
+      return res.status(400).json({
+        status: 'fail',
+        message: "Le receiverId est requis"
+      });
+    }
+
+    const invitation = await db.Invitation.findOne({
+      where: {
+        senderId,
+        receiverId,
+        status: { [Op.in]: ['pending', 'accepted'] }
+      }
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        hasInvitation: !!invitation
+      }
+    });
+  } catch (error) {
+    console.error('Erreur vérification:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: "Erreur lors de la vérification de l'invitation"
+    });
+  }
+};
+
+
 // Répondre à une invitation
 exports.respondToInvitation = async (req, res) => {
   try {
@@ -178,4 +221,56 @@ exports.respondToInvitation = async (req, res) => {
   }
 };
 
+// Supprimer une invitation
+exports.deleteInvitation = async (req, res) => {
+  const transaction = await db.sequelize.transaction();
 
+  try {
+    const { receiverId } = req.body;
+
+    if (!receiverId) {
+      await transaction.rollback();
+      return res.status(400).json({
+        status: 'fail',
+        message: "Le receiverId est requis dans le corps de la requête"
+      });
+    }
+
+    // Supprimer toutes les invitations où l'utilisateur est le receiver
+    const deletedCount = await db.Invitation.destroy({
+      where: {
+        receiverId,
+        [Op.or]: [
+          { status: 'pending' },
+          { status: 'accepted' }
+        ]
+      },
+      force: true,
+      transaction
+    });
+
+    if (deletedCount === 0) {
+      await transaction.rollback();
+      return res.status(404).json({
+        status: 'fail',
+        message: "Aucune invitation trouvée pour ce receiverId"
+      });
+    }
+
+    await transaction.commit();
+
+    return res.status(200).json({
+      status: 'success',
+      message: `${deletedCount} invitation(s) supprimée(s) pour le receiverId ${receiverId}`,
+      data: null
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Erreur suppression:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: "Erreur lors de la suppression des invitations"
+    });
+  }
+};

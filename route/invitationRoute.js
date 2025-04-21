@@ -9,9 +9,13 @@ router.use(authMiddleware);
 router.get('/search', invitationController.searchUsers);
 
 // Envoyer une invitation
-router.post('/sendinvit', invitationController.sendInvitation);
+router.post('/sendinvitation', invitationController.sendInvitation);
 
 // Répondre à une invitation en spécifiant l'ID de l'expéditeur
-router.patch('/respond/:senderId', invitationController.respondToInvitation);
+router.patch('/respondinvitation/:senderId', invitationController.respondToInvitation);
+router.post('/deleteinvitation', invitationController.deleteInvitation);
+router.post('/checkinvitation', invitationController.checkInvitation);
+
+
 
 module.exports = router;
