@@ -47,7 +47,7 @@ module.exports = {
       }
     });
 
-    // Ajout des index pour optimiser les requêtes
+    
     await queryInterface.addIndex('invitation', ['senderId']);
     await queryInterface.addIndex('invitation', ['receiverId']);
     await queryInterface.addIndex('invitation', ['status']);

@@ -23,25 +23,29 @@ fs.readdirSync(__dirname)
       file.slice(-3) === '.js' &&
       file.indexOf('.test.js') === -1
     );
-  }
-
-)
-
-
+  })
   .forEach(file => {
-    const model = require(path.join(__dirname, file))
-
+    const modelModule = require(path.join(__dirname, file));
+    
+  
+    let model;
+    if (typeof modelModule === 'function') {
+      model = modelModule(sequelize, Sequelize.DataTypes);
+    } else {
+      model = new modelModule(sequelize, Sequelize.DataTypes);
+    }
+    
     db[model.name] = model;
   });
 
-Object.keys(db).forEach(modelName => {
-  if (db[modelName].associate) {
-    db[modelName].associate(db);
-  }
-});
+db.user = require('./user')(sequelize, Sequelize.DataTypes);
+db.Invitation = require('./invitation')(sequelize, Sequelize.DataTypes);
+db.Invitation.belongsTo(db.user, { foreignKey: 'senderId', as: 'sender' });
+db.Invitation.belongsTo(db.user, { foreignKey: 'receiverId', as: 'receiver' });
+db.user.hasMany(db.Invitation, { foreignKey: 'senderId', as: 'sentInvitations' });
+db.user.hasMany(db.Invitation, { foreignKey: 'receiverId', as: 'receivedInvitations' });
 
 db.sequelize = sequelize;
 db.Sequelize = Sequelize;
-db.Invitation = require('./invitation')(sequelize, Sequelize.DataTypes);
-console.log('Modèles enregistrés:', Object.keys(db));
+
 module.exports = db;

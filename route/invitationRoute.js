@@ -5,16 +5,19 @@ const authMiddleware = require('../middleware/authmiddleware');
 
 router.use(authMiddleware);
 
-// Rechercher des utilisateurs
+
 router.get('/search', invitationController.searchUsers);
 
-// Envoyer une invitation
+
 router.post('/sendinvitation', invitationController.sendInvitation);
 
-// Répondre à une invitation en spécifiant l'ID de l'expéditeur
+
 router.patch('/respondinvitation/:senderId', invitationController.respondToInvitation);
 router.post('/deleteinvitation', invitationController.deleteInvitation);
 router.post('/checkinvitation', invitationController.checkInvitation);
+router.get('/getsentinvitation', invitationController.getSentInvitations);
+router.get('/getreceiveinvitation', invitationController.getReceivedInvitations);
+router.get('/friends', authMiddleware, invitationController.getFriends);
 
 
 

@@ -23,7 +23,7 @@ exports.searchUsers = async (req, res) => {
         { firstName: { [Op.iLike]: `%${searchTerm}%` } },
         { lastName: { [Op.iLike]: `%${searchTerm}%` } },
         { businessName: { [Op.iLike]: `%${searchTerm}%` } },
-        { email: { [Op.iLike]: `%${searchTerm}%` } } // Ajout de la recherche par email
+        { email: { [Op.iLike]: `%${searchTerm}%` } } 
       ]
     };
 
@@ -36,11 +36,11 @@ exports.searchUsers = async (req, res) => {
         'firstName', 
         'lastName', 
         'email',
-        'phone',       // Ajouté    
+        'phone',        
         'userType', 
         'businessName',
         'businessAddress',
-        'sectorOfActivity', // Ajouté
+        'sectorOfActivity', 
       ],
       limit: 20
     });
@@ -86,7 +86,7 @@ exports.sendInvitation = async (req, res) => {
       });
     }
 
-    // Client ne peut inviter QUE commerçant
+    
     if (sender.userType === '1' && receiver.userType !== '2') {
       return res.status(403).json({
         status: 'fail',
@@ -94,7 +94,7 @@ exports.sendInvitation = async (req, res) => {
       });
     }
 
-    // Commerçant peut inviter client ou commerçant, mais pas lui-même (déjà vérifié)
+    
 
     const existingInvitation = await invitation.findOne({
       where: {
@@ -176,10 +176,10 @@ exports.checkInvitation = async (req, res) => {
 exports.respondToInvitation = async (req, res) => {
   try {
     const senderId = req.params.senderId;
-    const receiverId = req.user.id; // Utilisateur connecté
+    const receiverId = req.user.id; 
     const { status } = req.body;
 
-    // Vérifie que le statut est valide
+    
     if (!['accepted', 'rejected'].includes(status)) {
       return res.status(400).json({
         status: 'fail',
@@ -187,7 +187,7 @@ exports.respondToInvitation = async (req, res) => {
       });
     }
 
-    // Cherche une invitation spécifique entre ces deux utilisateurs
+
     const invitationToUpdate = await invitation.findOne({
       where: {
         senderId,
@@ -236,7 +236,7 @@ exports.deleteInvitation = async (req, res) => {
       });
     }
 
-    // Supprimer toutes les invitations où l'utilisateur est le receiver
+    
     const deletedCount = await db.Invitation.destroy({
       where: {
         receiverId,
@@ -271,6 +271,137 @@ exports.deleteInvitation = async (req, res) => {
     return res.status(500).json({
       status: 'error',
       message: "Erreur lors de la suppression des invitations"
+    });
+  }
+};
+// Liste des invitations envoyées
+exports.getSentInvitations = async (req, res) => {
+  try {
+    const invitations = await invitation.findAll({
+      where: { senderId: req.user.id },
+      include: [
+        {
+          model: user,
+          as: 'receiver',
+          attributes: [
+            'id', 
+            'firstName', 
+            'lastName', 
+            'email', 
+            'phone', 
+            'userType', 
+            'businessName', 
+            'businessAddress', 
+            'sectorOfActivity'
+          ]
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json({
+      status: 'success',
+      results: invitations.length,
+      data: { invitations }
+    });
+  } catch (error) {
+    console.error('Get Sent Invitations Error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: "Erreur lors de la récupération des invitations envoyées"
+    });
+  }
+};
+
+// Liste des invitations reçues
+exports.getReceivedInvitations = async (req, res) => {
+  try {
+    const userId = req.user.id; 
+
+    const invitations = await invitation.findAll({
+      where: { 
+        receiverId: userId, 
+        status: 'pending' 
+      },
+      include: [
+        {
+          model: db.user,
+          as: 'sender',
+          attributes: [
+            'id', 
+            'firstName', 
+            'lastName', 
+            'email', 
+            'phone',       
+            'userType', 
+            'businessName', 
+            'businessAddress', 
+            'sectorOfActivity'
+          ]
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json({
+      status: 'success',
+      results: invitations.length,
+      data: { invitations }
+    });
+
+  } catch (error) {
+    console.error('Get Received Invitations Error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: "Erreur lors de la récupération des invitations reçues"
+    });
+  }
+};
+
+// Liste des amis (utilisateurs ayant accepté les invitations)
+exports.getFriends = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    
+    const acceptedInvitations = await invitation.findAll({
+      where: {
+        status: 'accepted',
+        [Op.or]: [
+          { senderId: userId },
+          { receiverId: userId }
+        ]
+      },
+      include: [
+        {
+          model: user,
+          as: 'sender',
+          attributes: ['id', 'firstName', 'lastName', 'email', 'userType', 'businessName']
+        },
+        {
+          model: user,
+          as: 'receiver',
+          attributes: ['id', 'firstName', 'lastName', 'email', 'userType', 'businessName']
+        }
+      ]
+    });
+
+    
+    const friends = acceptedInvitations.map(invite => {
+      return invite.senderId === userId ? invite.receiver : invite.sender;
+    });
+
+    res.status(200).json({
+      status: 'success',
+      results: friends.length,
+      data: { friends }
+    });
+
+  } catch (error) {
+    console.error('Get Friends Error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: "Erreur lors de la récupération de la liste d'amis"
     });
   }
 };
