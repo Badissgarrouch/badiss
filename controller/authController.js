@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { Op } = require('sequelize');
+const { Sequelize,Op } = require('sequelize');
 const { user } = require('../models');
 const nodemailer = require('nodemailer');
 const verificationEmail = require('../emailTemplates/verificationEmail');
@@ -418,6 +418,150 @@ const resetPassword = async (req, res) => {
     });
   }
 };
+const checkUserExistence = async (req, res) => {
+  const { email, name } = req.body;
+
+  if (!email || !name) {
+    return res.status(400).json({ message: 'Nom et email requis' });
+  }
+
+  try {
+    const existingUser = await user.findOne({
+      where: {
+        email,
+        [Op.or]: [
+          { firstName: name },
+          { lastName: name },
+          Sequelize.literal(`CONCAT("firstName", ' ', "lastName") = '${name}'`)
+        ]
+      }
+    });
+
+    if (existingUser) {
+      return res.status(200).json({
+        exists: true,
+        userId: existingUser.id,
+        message: 'Utilisateur trouvé'
+      });
+    } else {
+      return res.status(404).json({
+        exists: false,
+        message: 'Utilisateur non trouvé'
+      });
+    }
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+};
+
+const getUserInfo = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const foundUser = await user.findOne({
+      where: { id: userId },
+      attributes: ['id', 'firstName', 'lastName', 'email', 'phone','userType']
+    });
+
+    if (!foundUser) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Utilisateur non trouvé'
+      });
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      data: foundUser
+    });
+
+  } catch (error) {
+    console.error('Error getting user info:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Erreur lors de la récupération des informations utilisateur'
+    });
+  }
+};
+const updateUserInfo = async (req, res) => {
+  try {
+    // Verify JWT token
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Token d\'authentification requis'
+      });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        return res.status(401).json({
+          status: 'fail',
+          message: 'Token expiré'
+        });
+      }
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Token invalide'
+      });
+    }
+
+   
+    const foundUser = await user.findByPk(decoded.id);
+    if (!foundUser) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Utilisateur non trouvé'
+      });
+    }
+
+    
+    const { firstName, lastName } = req.body;
+    if (!firstName && !lastName) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Au moins un champ (prénom ou nom) doit être fourni'
+      });
+    }
+
+    
+    const updates = {};
+    if (firstName) updates.firstName = firstName;
+    if (lastName) updates.lastName = lastName;
+
+    
+    await foundUser.update(updates);
+
+   
+    const updatedUser = await user.findOne({
+      where: { id: foundUser.id },
+      attributes: ['id', 'firstName', 'lastName', 'email', 'phone', 'userType']
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Informations utilisateur mises à jour avec succès',
+      data: updatedUser
+    });
+
+  } catch (error) {
+    console.error('Error updating user info:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Erreur lors de la mise à jour des informations utilisateur'
+    });
+  }
+};
+
+
+
 
 module.exports = { 
   signup, 
@@ -425,5 +569,8 @@ module.exports = {
   verifyOtp, 
   forgotPassword, 
   verifyPasswordResetOtp, 
-  resetPassword 
+  resetPassword ,
+  checkUserExistence,
+  getUserInfo,
+  updateUserInfo
 };

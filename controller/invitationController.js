@@ -61,132 +61,186 @@ exports.searchUsers = async (req, res) => {
 };
 
 
-// Envoyer une invitation
+
+
+
 exports.sendInvitation = async (req, res) => {
   try {
     const { receiverId, message } = req.body;
     const senderId = req.user.id;
+    const io = req.app.get('io'); // Access Socket.IO instance
+    const connectedUsers = req.app.get('connectedUsers'); // Access connected users map
 
-    if (Number(senderId) === Number(receiverId)) {
+    // Validate inputs
+    if (!receiverId) {
       return res.status(400).json({
         status: 'fail',
-        message: "Vous ne pouvez pas vous inviter vous-même"
+        message: 'Le receiverId est requis',
       });
     }
 
+    // Prevent self-invitation
+    if (Number(senderId) === Number(receiverId)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Vous ne pouvez pas vous inviter vous-même',
+      });
+    }
+
+    // Fetch sender and receiver
     const [sender, receiver] = await Promise.all([
-      user.findByPk(senderId),
-      user.findByPk(receiverId)
+      db.user.findByPk(senderId), // Updated to db.user for consistency
+      db.user.findByPk(receiverId),
     ]);
 
     if (!receiver) {
       return res.status(404).json({
         status: 'fail',
-        message: "Utilisateur destinataire introuvable"
+        message: 'Utilisateur destinataire introuvable',
       });
     }
 
-    
+    // Check user type constraints
     if (sender.userType === '1' && receiver.userType !== '2') {
       return res.status(403).json({
         status: 'fail',
-        message: "Les clients ne peuvent inviter que des commerçants"
+        message: 'Les clients ne peuvent inviter que des commerçants',
       });
     }
 
-    
-
-    const existingInvitation = await invitation.findOne({
+    // Check for existing invitation in either direction
+    const existingInvitation = await db.invitation.findOne({
       where: {
         [Op.or]: [
           { senderId, receiverId },
-          { senderId: receiverId, receiverId: senderId }
-        ]
-      }
+          { senderId: receiverId, receiverId: senderId },
+        ],
+        status: { [Op.in]: ['pending', 'accepted'] },
+      },
     });
 
     if (existingInvitation) {
       return res.status(409).json({
         status: 'fail',
-        message: "Une invitation existe déjà entre ces utilisateurs"
+        message: 'Une invitation existe déjà entre ces utilisateurs',
       });
     }
 
-    const newInvitation = await invitation.create({
+    // Create new invitation
+    const newInvitation = await db.invitation.create({
       senderId,
       receiverId,
       message,
-      status: 'pending'
+      status: 'pending',
     });
+
+    // Create notification for the receiver
+    const notification = await db.notification.create({
+      userId: receiverId,
+      type: 'new_invitation',
+      message: `${sender.firstName} ${sender.lastName} vous a envoyé une invitation.`,
+      invitationId: newInvitation.id,
+      read: false,
+    });
+
+    // Emit Socket.IO event to the receiver
+    const receiverSocketId = connectedUsers.get(receiverId.toString());
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('new_notification', {
+        id: notification.id,
+        type: 'new_invitation',
+        message: notification.message,
+        invitationId: notification.invitationId,
+        read: false,
+        createdAt: notification.createdAt,
+      });
+    }
 
     res.status(201).json({
       status: 'success',
-      data: { invitation: newInvitation }
+      data: { invitation: newInvitation },
     });
-
   } catch (error) {
     console.error('Invitation Error:', error);
     res.status(500).json({
       status: 'error',
-      message: process.env.NODE_ENV === 'development' 
-        ? error.message 
-        : "Erreur lors de l'envoi de l'invitation"
+      message:
+        process.env.NODE_ENV === 'development'
+          ? error.message
+          : "Erreur lors de l'envoi de l'invitation",
     });
   }
 };
 
-
+// Backend: checkInvitation
 exports.checkInvitation = async (req, res) => {
   try {
     const { receiverId } = req.body;
     const senderId = req.user.id;
 
+    // Validate receiverId
     if (!receiverId) {
       return res.status(400).json({
         status: 'fail',
-        message: "Le receiverId est requis"
+        message: 'Le receiverId est requis',
       });
     }
 
-    const invitation = await db.Invitation.findOne({
+    // Prevent self-invitation check
+    if (Number(senderId) === Number(receiverId)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Vous ne pouvez pas vérifier une invitation pour vous-même',
+      });
+    }
+
+    // Check for existing invitation in either direction
+    const invitation = await db.invitation.findOne({
       where: {
-        senderId,
-        receiverId,
-        status: { [Op.in]: ['pending', 'accepted'] }
-      }
+        [Op.or]: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId },
+        ],
+        status: { [Op.in]: ['pending', 'accepted'] },
+      },
     });
 
     return res.status(200).json({
       status: 'success',
       data: {
-        hasInvitation: !!invitation
-      }
+        hasInvitation: !!invitation,
+        invitation: invitation || null, // Include invitation details if exists
+      },
     });
   } catch (error) {
     console.error('Erreur vérification:', error);
     return res.status(500).json({
       status: 'error',
-      message: "Erreur lors de la vérification de l'invitation"
+      message:
+        process.env.NODE_ENV === 'development'
+          ? error.message
+          : "Erreur lors de la vérification de l'invitation",
     });
   }
 };
 
 
-// Répondre à une invitation
+
+// In invitationController.js
 exports.respondToInvitation = async (req, res) => {
   try {
     const senderId = req.params.senderId;
     const receiverId = req.user.id; 
     const { status } = req.body;
+    const io = req.app.get('io'); // Access Socket.IO instance
+    const connectedUsers = req.app.get('connectedUsers'); // Access connected users map
 
-    
     if (!['accepted', 'rejected'].includes(status)) {
       return res.status(400).json({
         status: 'fail',
         message: 'Statut invalide. Doit être "accepted" ou "rejected"'
       });
     }
-
 
     const invitationToUpdate = await invitation.findOne({
       where: {
@@ -196,7 +250,6 @@ exports.respondToInvitation = async (req, res) => {
       }
     });
 
-    // Vérifie si l'invitation existe et est encore en attente
     if (!invitationToUpdate) {
       return res.status(404).json({
         status: 'fail',
@@ -204,8 +257,32 @@ exports.respondToInvitation = async (req, res) => {
       });
     }
 
-    // Met à jour le statut de l'invitation
     await invitationToUpdate.update({ status });
+
+    // Create notification for the sender if the invitation is accepted
+    if (status === 'accepted') {
+      const receiver = await user.findByPk(receiverId);
+      const notification = await db.notification.create({
+        userId: senderId,
+        type: 'invitation_accepted',
+        message: `${receiver.firstName} ${receiver.lastName} a accepté votre invitation.`,
+        invitationId: invitationToUpdate.id,
+        read: false
+      });
+
+      // Emit Socket.IO event to the sender
+      const senderSocketId = connectedUsers.get(senderId.toString());
+      if (senderSocketId) {
+        io.to(senderSocketId).emit('new_notification', {
+          id: notification.id,
+          type: 'invitation_accepted',
+          message: notification.message,
+          invitationId: notification.invitationId,
+          read: false,
+          createdAt: notification.createdAt
+        });
+      }
+    }
 
     res.status(200).json({
       status: 'success',
@@ -221,7 +298,7 @@ exports.respondToInvitation = async (req, res) => {
   }
 };
 
-// Supprimer une invitation
+
 exports.deleteInvitation = async (req, res) => {
   const transaction = await db.sequelize.transaction();
 
@@ -402,6 +479,166 @@ exports.getFriends = async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: "Erreur lors de la récupération de la liste d'amis"
+    });
+  }
+};
+
+exports.checkInvitationStatus = async (req, res) => {
+  try {
+    const currentUserId = req.user.id;
+    const { otherUserId } = req.body;
+
+    if (!otherUserId) {
+      return res.status(400).json({
+        status: 'fail',
+        message: "L'identifiant de l'autre utilisateur est requis"
+      });
+    }
+
+    const invitationRecord = await invitation.findOne({
+      where: {
+        [Op.or]: [
+          { senderId: currentUserId, receiverId: otherUserId },
+          { senderId: otherUserId, receiverId: currentUserId }
+        ]
+      }
+    });
+
+    const status = invitationRecord ? invitationRecord.status : 'none';
+
+    res.status(200).json({
+      status: 'success',
+      data: { invitationStatus: status }
+    });
+  } catch (error) {
+    console.error('Erreur statut invitation:', error);
+    res.status(500).json({
+      status: 'error',
+      message: "Erreur lors de la récupération du statut de l'invitation"
+    });
+  }
+};
+// Supprimer une amitié
+// Supprimer une amitié
+exports.deleteFriendship = async (req, res) => {
+  const transaction = await db.sequelize.transaction();
+  
+  try {
+    const currentUserId = req.user.id;
+    const { friendId } = req.query; // Changé de req.body à req.query
+
+    if (!friendId) {
+      await transaction.rollback();
+      return res.status(400).json({
+        status: 'fail',
+        message: "L'identifiant de l'ami est requis"
+      });
+    }
+
+   
+    const friendship = await invitation.findOne({
+      where: {
+        status: 'accepted',
+        [Op.or]: [
+          { senderId: currentUserId, receiverId: friendId },
+          { senderId: friendId, receiverId: currentUserId }
+        ]
+      },
+      transaction
+    });
+
+    if (!friendship) {
+      await transaction.rollback();
+      return res.status(404).json({
+        status: 'fail',
+        message: "Aucune amitié trouvée avec cet utilisateur"
+      });
+    }
+
+    // Supprimer l'invitation/amitié
+    await invitation.destroy({
+      where: { id: friendship.id },
+      transaction
+    });
+
+    await transaction.commit();
+
+    res.status(200).json({
+      status: 'success',
+      message: "Amitié supprimée avec succès",
+      data: null
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Delete Friendship Error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: "Erreur lors de la suppression de l'amitié"
+    });
+  }
+};
+exports.getUserInvitationStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [friends, sentInvitations, receivedInvitations] = await Promise.all([
+      // 1. Friends (accepted invitations)
+      invitation.findAll({
+        where: {
+          status: 'accepted',
+          [Op.or]: [
+            { senderId: userId },
+            { receiverId: userId }
+          ]
+        },
+        attributes: ['createdAt'],
+        raw: true
+      }),
+      // 2. Sent invitations
+      invitation.findAll({
+        where: {
+          senderId: userId
+        },
+        attributes: ['createdAt'],
+        raw: true
+      }),
+      // 3. Received invitations
+      invitation.findAll({
+        where: {
+          receiverId: userId
+        },
+        attributes: ['createdAt'],
+        raw: true
+      })
+    ]);
+
+    // Calculate counts
+    const friendCount = friends.length;
+    const sentInvitationCount = sentInvitations.length;
+    const receivedInvitationCount = receivedInvitations.length;
+
+    // Send only counts in the response
+    res.status(200).json({
+      status: 'success',
+      data: {
+        friendCount,
+        sentInvitationCount,
+        receivedInvitationCount,
+        // Include creation times in a separate field not exposed in the main data
+        _internal: {
+          friendsDates: friends.map(f => f.createdAt),
+          sentDates: sentInvitations.map(s => s.createdAt),
+          receivedDates: receivedInvitations.map(r => r.createdAt)
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get Invitation Stats Error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: "Erreur lors de la récupération des statistiques"
     });
   }
 };

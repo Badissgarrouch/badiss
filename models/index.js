@@ -26,24 +26,33 @@ fs.readdirSync(__dirname)
   })
   .forEach(file => {
     const modelModule = require(path.join(__dirname, file));
-    
-  
     let model;
     if (typeof modelModule === 'function') {
       model = modelModule(sequelize, Sequelize.DataTypes);
     } else {
       model = new modelModule(sequelize, Sequelize.DataTypes);
     }
-    
     db[model.name] = model;
   });
 
 db.user = require('./user')(sequelize, Sequelize.DataTypes);
 db.Invitation = require('./invitation')(sequelize, Sequelize.DataTypes);
+db.evaluation = require('./evaluation')(sequelize, Sequelize.DataTypes);
+db.notification = require('./notification')(sequelize, Sequelize.DataTypes);
+
 db.Invitation.belongsTo(db.user, { foreignKey: 'senderId', as: 'sender' });
 db.Invitation.belongsTo(db.user, { foreignKey: 'receiverId', as: 'receiver' });
 db.user.hasMany(db.Invitation, { foreignKey: 'senderId', as: 'sentInvitations' });
 db.user.hasMany(db.Invitation, { foreignKey: 'receiverId', as: 'receivedInvitations' });
+
+db.evaluation.belongsTo(db.user, { foreignKey: 'senderId', as: 'sender' });
+db.evaluation.belongsTo(db.user, { foreignKey: 'receiverId', as: 'receiver' });
+db.user.hasMany(db.evaluation, { foreignKey: 'senderId', as: 'sentEvaluations' });
+db.user.hasMany(db.evaluation, { foreignKey: 'receiverId', as: 'receivedEvaluations' });
+
+db.notification.belongsTo(db.user, { foreignKey: 'userId', as: 'user' });
+db.notification.belongsTo(db.Invitation, { foreignKey: 'invitationId', as: 'invitation' });
+db.user.hasMany(db.notification, { foreignKey: 'userId', as: 'notifications' });
 
 db.sequelize = sequelize;
 db.Sequelize = Sequelize;

@@ -18,6 +18,9 @@ router.post('/checkinvitation', invitationController.checkInvitation);
 router.get('/getsentinvitation', invitationController.getSentInvitations);
 router.get('/getreceiveinvitation', invitationController.getReceivedInvitations);
 router.get('/friends', authMiddleware, invitationController.getFriends);
+router.post('/invitstatus',  invitationController.checkInvitationStatus);
+router.delete('/deletefriendship',invitationController.deleteFriendship);
+router.get('/info',invitationController.getUserInvitationStats);
 
 
 
